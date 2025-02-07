@@ -1,0 +1,6 @@
+[07-02-2025 16:23:05]-[scheduler::tests:414]:💬 Информация -> tick: Event { id: "", current: 0, len: 60 }
+[07-02-2025 16:24:05]-[scheduler::tests:416]:💬 Информация -> finish: 
+[07-02-2025 16:26:36]-[scheduler::tests:416]:💬 Информация -> finish: 
+[07-02-2025 16:26:45]-[scheduler::tests:414]:💬 Информация -> tick: Event { id: "123", current: 0, len: 60 }
+[07-02-2025 16:28:37]-[scheduler::tests:417]:💬 Информация -> finish_cycle: Event { id: "123", current: 1738945717, len: 86363 }
+[07-02-2025 16:34:22]-[scheduler::tests:417]:💬 Информация -> finish_cycle: Event { id: "123", current: 0, len: 86378 }

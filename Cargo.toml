@@ -1,0 +1,14 @@
+[package]
+name = "scheduler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+utilites = {git = "https://github.com/P40b0s/help_utilites.git", package = "utilites", default-features = false, features = ["dates"]}
+serde = { version = "1.0.216", features = ["derive"] }
+tokio= { version = "1.43.0", features = ["macros", "rt", "rt-multi-thread", "bytes", "sync", "time"] }
+futures="0.3.31"
+tokio-stream="*"
+logger = {git = "https://github.com/P40b0s/logger.git"}
+[dev-dependencies]
+tokio-test="*"
