@@ -45,9 +45,10 @@ impl Time
     pub fn add_hours(&mut self, h: i64)
     {
         let new_date =  Date::now().with_time(&self.time).add_minutes(h*60);
-        let now = Date::now();
+        //if we take date now, nned correction with await timer (1 min)
+        let old_date = Date::now().with_time(&self.time);
         //let current_timestramp = now.as_naive_datetime().and_utc().timestamp();
-        let finish_timestramp = time_diff(&now, &new_date);
+        let finish_timestramp = time_diff(&old_date, &new_date);
         self.current_timestramp = 0;
         self.finish_timestramp = finish_timestramp;
         self.is_expired = false;
@@ -57,9 +58,8 @@ impl Time
     {
         if let Some(new_date) =  Date::now().with_time(&self.time).add_months(m)
         {
-            let now = Date::now();
-            //let current_timestramp = now.as_naive_datetime().and_utc().timestamp();
-            let finish_timestramp = time_diff(&now, &new_date);
+            let old_date = Date::now().with_time(&self.time);
+            let finish_timestramp = time_diff(&old_date, &new_date);
             self.current_timestramp = 0;
             self.finish_timestramp = finish_timestramp;
             self.is_expired = false;
@@ -69,10 +69,10 @@ impl Time
 }
 
 #[derive(Debug)]
-struct Task<O> 
-    where O: PartialEq + Eq + Hash + Send + Sync
+struct Task<T> 
+    where T: PartialEq + Eq + Hash + Send
 {
-    id: Arc<O>,
+    id: Arc<T>,
     ///interval in minutes
     interval: Option<u32>,
     ///target time in format on utilites::Date
@@ -85,7 +85,7 @@ struct Task<O>
 
 ///clone only cloning internal ref Arc<RwLock<Vec<Task>>>
 #[derive(Debug)]
-pub struct Scheduler<T>(Arc<RwLock<Vec<Task<T>>>>) where Self: Send + Sync, T: PartialEq + Eq + Hash + Send + Sync;
+pub struct Scheduler<T>(Arc<RwLock<Vec<Task<T>>>>) where Self: Send + Sync, T: PartialEq + Eq + Hash + Send;
 
 impl<T> Clone for Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
@@ -117,7 +117,7 @@ impl Display for RepeatingStrategy
     }
 }
 #[derive(Clone, Debug)]
-pub struct Event<T> where Self: Send, T: PartialEq + Eq + Hash + Send + Sync
+pub struct Event<T> where Self: Send, T: PartialEq + Eq + Hash + Send
 {
     pub id: Arc<T>,
     pub current: u32,
