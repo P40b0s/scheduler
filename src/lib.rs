@@ -192,6 +192,7 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
                                 if minutes == 0 && time.is_expired
                                 {
                                     handler.tick(SchedulerEvent::Expired(task.id.clone())).await;
+                                    task.finished = true;
                                 }
                                 else if minutes != 0
                                 {
