@@ -1,4 +1,4 @@
-use std::{fmt::{Debug, Display}, sync::Arc};
+use std::{fmt::{Debug, Display}, hash::Hash, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use utilites::Date;
@@ -69,9 +69,10 @@ impl Time
 }
 
 #[derive(Debug)]
-struct Task
+struct Task<O> 
+    where O: PartialEq + Eq + Hash + Send + Sync
 {
-    id: Arc<String>,
+    id: Arc<O>,
     ///interval in minutes
     interval: Option<u32>,
     ///target time in format on utilites::Date
@@ -84,9 +85,9 @@ struct Task
 
 ///clone only cloning internal ref Arc<RwLock<Vec<Task>>>
 #[derive(Debug)]
-pub struct Scheduler(Arc<RwLock<Vec<Task>>>) where Self: Send + Sync;
+pub struct Scheduler<T>(Arc<RwLock<Vec<Task<T>>>>) where Self: Send + Sync, T: PartialEq + Eq + Hash + Send + Sync;
 
-impl Clone for Scheduler
+impl<T> Clone for Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
     fn clone(&self) -> Self 
     {
@@ -116,15 +117,15 @@ impl Display for RepeatingStrategy
     }
 }
 #[derive(Clone, Debug)]
-pub struct Event where Self: Send
+pub struct Event<T> where Self: Send, T: PartialEq + Eq + Hash + Send + Sync
 {
-    pub id: Arc<String>,
+    pub id: Arc<T>,
     pub current: u32,
     pub len: u32
 }
-impl Event
+impl<T> Event<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
-    fn new(id: Arc<String>, current: u32, len: u32) -> Self
+    fn new(id: Arc<T>, current: u32, len: u32) -> Self
     {
         Self
         {
@@ -136,25 +137,25 @@ impl Event
 }
 
 #[derive(Clone, Debug)]
-pub enum SchedulerEvent
+pub enum SchedulerEvent<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
     ///time in task is expired and task is not repeatable
-    Expired(Arc<String>),
+    Expired(Arc<T>),
     ///event every 1 minute
-    Tick(Event),
+    Tick(Event<T>),
     ///event on finish task, if task is not repeatable
-    Finish(Arc<String>),
+    Finish(Arc<T>),
     /// event on finish repeat cycle for task, task will rerun with new end time
-    FinishCycle(Event)
+    FinishCycle(Event<T>)
 }
 
-impl Scheduler
+impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
     pub fn new() -> Self
     {
         Self(Arc::new(RwLock::new(Vec::new())))
     }
-    pub async fn run<H: SchedulerHandler>(&self, handler: H)
+    pub async fn run<H: SchedulerHandler<T>>(&self, handler: H)
     {
         let mut minutes: u32 = 0;
         loop 
@@ -280,7 +281,7 @@ impl Scheduler
     }
     
 
-    pub async fn add_interval_task(&self, id: &str, interval: u32, repeating_strategy: RepeatingStrategy)
+    pub async fn add_interval_task(&self, id: T, interval: u32, repeating_strategy: RepeatingStrategy)
     {
         let task = Task
         {
@@ -288,13 +289,13 @@ impl Scheduler
             time: None,
             repeating_strategy,
             finished: false,
-            id: Arc::new(id.to_owned())
+            id: Arc::new(id)
         };
         let mut guard = self.0.write().await;
         guard.push(task);
     }
 
-    pub async fn add_date_task(&self, id: &str, date: Date, repeating_strategy: RepeatingStrategy)
+    pub async fn add_date_task(&self, id: T, date: Date, repeating_strategy: RepeatingStrategy)
     {
         let mut guard = self.0.write().await;
         let task = Task
@@ -303,16 +304,16 @@ impl Scheduler
             time: Some(Time::new(date)),
             repeating_strategy,
             finished: false,
-            id: Arc::new(id.to_owned())
+            id: Arc::new(id)
         };
         guard.push(task);
     }
 
 }
 
-pub trait SchedulerHandler
+pub trait SchedulerHandler<T> where T: PartialEq + Eq + Hash + Send + Sync
 {
-    fn tick(&self, event: SchedulerEvent) -> impl std::future::Future<Output = ()>;
+    fn tick(&self, event: SchedulerEvent<T>) -> impl std::future::Future<Output = ()>;
 }
 
 fn time_diff(current_date: &Date, checked_date: &Date) -> i64
@@ -323,6 +324,8 @@ fn time_diff(current_date: &Date, checked_date: &Date) -> i64
 #[cfg(test)]
 mod tests
 {
+    use std::{fmt::Debug, hash::Hash};
+
     use utilites::Date;
     use crate::SchedulerEvent;
 
@@ -340,9 +343,9 @@ mod tests
     {
         
     }
-    impl super::SchedulerHandler for TestStruct
+    impl<T> super::SchedulerHandler<T> for TestStruct where T: PartialEq + Eq + Hash + Send + Sync + Debug + ToString
     {
-        fn tick(&self, event: SchedulerEvent) -> impl std::future::Future<Output = ()>
+        fn tick(&self, event: SchedulerEvent<T>) -> impl std::future::Future<Output = ()>
         {
             async 
             {
@@ -352,8 +355,8 @@ mod tests
                     {
                         logger::info!("tick: {:?}", t);
                     },
-                    SchedulerEvent::Expired(e) => logger::info!("expired: {}", e),
-                    SchedulerEvent::Finish(f) => logger::info!("finish: {}", f),
+                    SchedulerEvent::Expired(e) => logger::info!("expired: {:?}", e),
+                    SchedulerEvent::Finish(f) => logger::info!("finish: {:?}", f),
                     SchedulerEvent::FinishCycle(fc) => logger::info!("finish_cycle: {:?}", fc),
                 };
             }
