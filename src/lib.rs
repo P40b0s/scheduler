@@ -1,7 +1,6 @@
-use std::{borrow::Cow, fmt::{Debug, Display}, ops::{Deref, DerefMut}, pin::Pin, sync::{Arc, LazyLock}, task::{Context, Poll}, time::Duration};
+use std::{fmt::{Debug, Display}, sync::Arc};
 use serde::{Deserialize, Serialize};
-use tokio::{stream, sync::{mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender}, RwLock}};
-use tokio_stream::Stream;
+use tokio::sync::RwLock;
 use utilites::Date;
 
 #[derive(Debug)]
@@ -70,23 +69,29 @@ impl Time
 }
 
 #[derive(Debug)]
-struct Task<'a>
+struct Task
 {
-    id: Cow<'a, str>,
-    ///интервал запуска в минутах
+    id: Arc<String>,
+    ///interval in minutes
     interval: Option<u32>,
-    ///время когда планировщик должен закончить задание
+    ///target time in format on utilites::Date
     time: Option<Time>,
-    ///Стратегия повтора задачи
+    ///task repeating strategy
     repeating_strategy: RepeatingStrategy,
+    /// task is finished
     finished: bool,
 }
+
+///clone only cloning internal ref Arc<RwLock<Vec<Task>>>
 #[derive(Debug)]
-pub struct Scheduler<'a>
+pub struct Scheduler(Arc<RwLock<Vec<Task>>>) where Self: Send + Sync;
+
+impl Clone for Scheduler
 {
-    tasks: Arc<RwLock<Vec<Task<'a>>>>,
-    sender: Option<Sender<SchedulerEvent<'a>>>,
-    receiver: Option<Receiver<SchedulerEvent<'a>>>
+    fn clone(&self) -> Self 
+    {
+        Self(self.0.clone())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
@@ -96,8 +101,6 @@ pub enum RepeatingStrategy
     Dialy,
     Forever,
     Monthly,
-    // #[cfg(test)]
-    // Test
 }
 impl Display for RepeatingStrategy
 {
@@ -113,15 +116,15 @@ impl Display for RepeatingStrategy
     }
 }
 #[derive(Clone, Debug)]
-pub struct Event<'a> where Self: Send
+pub struct Event where Self: Send
 {
-    pub id: Cow<'a, str>,
+    pub id: Arc<String>,
     pub current: u32,
     pub len: u32
 }
-impl<'a> Event<'a>
+impl Event
 {
-    fn new(id: Cow<'a, str>, current: u32, len: u32) -> Self
+    fn new(id: Arc<String>, current: u32, len: u32) -> Self
     {
         Self
         {
@@ -133,172 +136,137 @@ impl<'a> Event<'a>
 }
 
 #[derive(Clone, Debug)]
-pub enum SchedulerEvent<'a>
+pub enum SchedulerEvent
 {
-    ///время указанное в задаче уже прошло а задача должна выполнятся один раз, повторное время для нее назначено не будет
-    Expired(Cow<'a, str>),
-    Tick(Event<'a>),
-    Finish(Cow<'a, str>),
-    FinishCycle(Event<'a>)
+    ///time in task is expired and task is not repeatable
+    Expired(Arc<String>),
+    ///event every 1 minute
+    Tick(Event),
+    ///event on finish task, if task is not repeatable
+    Finish(Arc<String>),
+    /// event on finish repeat cycle for task, task will rerun with new end time
+    FinishCycle(Event)
 }
 
-
-
-impl<'a> Scheduler<'a>
+impl Scheduler
 {
     pub fn new() -> Self
     {
-        Self
-        {
-            tasks: Arc::new(RwLock::new(Vec::new())),
-            sender: None,
-            receiver: None
-        }
+        Self(Arc::new(RwLock::new(Vec::new())))
     }
-    pub async fn get_receiver(&mut self) -> Receiver<SchedulerEvent<'a>>
-    {
-        let (sender, receiver) = tokio::sync::mpsc::channel::<SchedulerEvent<'a>>(10);
-        self.sender = Some(sender);
-        receiver
-    }
-
-    async fn send_tick(&self, id: Cow<'a, str>, current: u32, len: u32)
-    {
-        if let Some(sender) = self.sender.as_ref()
-        {
-            let event = Event::new(id, current, len);
-            let _ = sender.send(SchedulerEvent::Tick(event)).await;
-        }
-    }
-    async fn send_cycle_finish(&self, id: Cow<'a, str>, current: u32, len: u32)
-    {
-        if let Some(sender) = self.sender.as_ref()
-        {
-            let event = Event::new(id, current, len);
-            let _ = sender.send(SchedulerEvent::FinishCycle(event)).await;
-        }
-    }
-    async fn send_finish(&self, id: Cow<'a, str>)
-    {
-        if let Some(sender) = self.sender.as_ref()
-        {
-            let _ = sender.send(SchedulerEvent::Finish(id)).await;
-        }
-    }
-    async fn send_expired(&self, id: Cow<'a, str>)
-    {
-        if let Some(sender) = self.sender.as_ref()
-        {
-            let _ = sender.send(SchedulerEvent::Expired(id)).await;
-        }
-    }
-
-    pub async fn run(&self)
+    pub async fn run<H: SchedulerHandler>(&self, handler: H)
     {
         let mut minutes: u32 = 0;
         loop 
         {
-            let mut guard = self.tasks.write().await;
-            for t in guard.iter_mut()
+            let mut guard = self.0.write().await;
+            for task in guard.iter_mut()
             {
-                if !t.finished
+                if !task.finished
                 {
-                    match t.repeating_strategy
+                    match task.repeating_strategy
                     {
                         RepeatingStrategy::Once =>
                         {
-                            if let Some(interval) = t.interval.as_ref()
+                            if let Some(interval) = task.interval.as_ref()
                             {
                                 if minutes != 0
                                 {
                                     let div = minutes % interval;
                                     if div == 0
                                     {
-                                        self.send_finish(t.id.clone()).await;
-                                        t.finished = true;
+                                        handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
+                                        task.finished = true;
                                     }
                                     else
                                     {
-                                        self.send_tick(t.id.clone(), div, *interval).await;
+                                        let event = Event::new(task.id.clone(), div, *interval);
+                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                     }
                                 }
                             }
-                            else if let Some(time) = t.time.as_mut()
+                            else if let Some(time) = task.time.as_mut()
                             {
                                 time.update();
                                 if minutes == 0 && time.is_expired
                                 {
-                                    self.send_expired(t.id.clone()).await;
+                                    handler.tick(SchedulerEvent::Expired(task.id.clone())).await;
                                 }
                                 else if minutes != 0
                                 {
                                     if time.is_expired
                                     {
-                                        self.send_finish(t.id.clone()).await;
-                                        t.finished = true;
+                                        handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
+                                        task.finished = true;
                                     }
                                     else
                                     {
-                                        self.send_tick(t.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32).await;
+                                        let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                     }
                                 }
                             }
                         },
                         RepeatingStrategy::Dialy | RepeatingStrategy::Forever =>
                         {
-                            if let Some(interval) = t.interval.as_ref()
+                            if let Some(interval) = task.interval.as_ref()
                             {
                                 if minutes != 0
                                 {
                                     let div = minutes % interval;
                                     if div == 0
                                     {
-                                        self.send_cycle_finish(t.id.clone(), div, *interval).await;
+                                        let event = Event::new(task.id.clone(), div, *interval);
+                                        let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
                                     }
                                     else
                                     {
-                                        self.send_tick(t.id.clone(), div, *interval).await;
+                                        let event = Event::new(task.id.clone(), div, *interval);
+                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                     }
                                 }
                             }
-                            else if let Some(time) = t.time.as_mut()
+                            else if let Some(time) = task.time.as_mut()
                             {
                                 time.update();
                                 if time.is_expired
                                 {
                                     time.add_hours(24);
-                                    self.send_cycle_finish(t.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32).await;
+                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
                                 }
                                 else if minutes != 0
                                 {
-                                    self.send_tick(t.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32).await;
+                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                 }
                             }
                         },
                         RepeatingStrategy::Monthly =>
                         {
-                            if let Some(time) = t.time.as_mut()
+                            if let Some(time) = task.time.as_mut()
                             {
                                 time.update();
                                 if time.is_expired
                                 {
                                     time.add_months(1);
-                                    self.send_cycle_finish(t.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32).await;
+                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
                                 }
                                 else if minutes != 0
                                 {
-                                    self.send_tick(t.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32).await;
+                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                 }
                             }
                         },
                     }
                 }
             }
-           
             guard.retain(|d| !d.finished);
             drop(guard);
-
             tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
+            //reset timer, we not need u32 overflow on long running tasks
             if minutes > 24*60
             {
                 minutes = 1;
@@ -308,10 +276,11 @@ impl<'a> Scheduler<'a>
                 minutes += 1;
             }
         }
+
     }
     
 
-    pub async fn add_interval_task(&self, id: Cow<'a, str>, interval: u32, repeating_strategy: RepeatingStrategy)
+    pub async fn add_interval_task(&self, id: &str, interval: u32, repeating_strategy: RepeatingStrategy)
     {
         let task = Task
         {
@@ -319,57 +288,34 @@ impl<'a> Scheduler<'a>
             time: None,
             repeating_strategy,
             finished: false,
-            id
+            id: Arc::new(id.to_owned())
         };
-        let mut guard = self.tasks.write().await;
-        guard.push(task);
-    }
-    pub async fn add_error_task(&self, id: Cow<'a, str>)
-    {
-        let task = Task
-        {
-            interval: Some(999),
-            time: None,
-            repeating_strategy: RepeatingStrategy::Once,
-            finished: true,
-            id
-        };
-        let mut guard = self.tasks.write().await;
+        let mut guard = self.0.write().await;
         guard.push(task);
     }
 
-    pub async fn add_date_task<T: Into<Cow<'a, str>>>(&self, id: T, date: Date, repeating_strategy: RepeatingStrategy)
+    pub async fn add_date_task(&self, id: &str, date: Date, repeating_strategy: RepeatingStrategy)
     {
-        let mut guard = self.tasks.write().await;
+        let mut guard = self.0.write().await;
         let task = Task
         {
             interval: None,
             time: Some(Time::new(date)),
             repeating_strategy,
             finished: false,
-            id: id.into()
+            id: Arc::new(id.to_owned())
         };
         guard.push(task);
     }
 
 }
 
-trait Test<'a>: Send
+pub trait SchedulerHandler
 {
-    fn tick(event: Event<'a>) -> impl std::future::Future<Output = ()> + Send;
-    async fn finish_cycle(event: Event<'a>);
-    async fn expired(event: Cow<'a, str>);
-    async fn finish(event: Cow<'a, str>);
+    fn tick(&self, event: SchedulerEvent) -> impl std::future::Future<Output = ()>;
 }
 
-
-fn current_timestramp(date: &Date) -> u32
-{
-    let now = Date::now();
-    let target = time_diff(&now, date);
-    target as u32
-}
-pub fn time_diff(current_date: &Date, checked_date: &Date) -> i64
+fn time_diff(current_date: &Date, checked_date: &Date) -> i64
 {
     checked_date.as_naive_datetime().and_utc().timestamp() - current_date.as_naive_datetime().and_utc().timestamp()
 }
@@ -377,11 +323,8 @@ pub fn time_diff(current_date: &Date, checked_date: &Date) -> i64
 #[cfg(test)]
 mod tests
 {
-    use std::borrow::Cow;
-
     use utilites::Date;
-
-    use crate::{Event, SchedulerEvent};
+    use crate::SchedulerEvent;
 
     #[test]
     fn test_interval_current()
@@ -392,33 +335,50 @@ mod tests
         println!("{}", d);
     }
 
-
-
+    ///can add to struct Arc<RwLock<T>> for use in handler 
+    struct TestStruct
+    {
+        
+    }
+    impl super::SchedulerHandler for TestStruct
+    {
+        fn tick(&self, event: SchedulerEvent) -> impl std::future::Future<Output = ()>
+        {
+            async 
+            {
+                match event
+                {
+                    SchedulerEvent::Tick(t) => 
+                    {
+                        logger::info!("tick: {:?}", t);
+                    },
+                    SchedulerEvent::Expired(e) => logger::info!("expired: {}", e),
+                    SchedulerEvent::Finish(f) => logger::info!("finish: {}", f),
+                    SchedulerEvent::FinishCycle(fc) => logger::info!("finish_cycle: {:?}", fc),
+                };
+            }
+        }
+    }
+    
     #[tokio::test]
     async fn test_scheduller()
     {
         let _ = logger::StructLogger::new_default();
         let d1 = Date::now().add_minutes(1);
-        let d2 = Date::now().add_minutes(2);
-        let interval = 2;
-        let interval2 = 3;
-        let interval = 3;
-        let mut scheduler = super::Scheduler::new();
-        let mut receiver = scheduler.get_receiver().await;
+        let scheduler = super::Scheduler::new();
+        let _ = scheduler.add_date_task("123", d1, crate::RepeatingStrategy::Dialy).await;
+        let sch_for_run = scheduler.clone();
         tokio::spawn(async move 
         {
-            while let Some(r) = receiver.recv().await
-            {
-                match r
-                {
-                    SchedulerEvent::Tick(t) => logger::info!("tick: {:?}", t),
-                    SchedulerEvent::Expired(e) => logger::info!("expired: {}", e),
-                    SchedulerEvent::Finish(f) => logger::info!("finish: {}", f),
-                    SchedulerEvent::FinishCycle(fc) => logger::info!("finish_cycle: {:?}", fc),
-                }
-            }
+           
+            let test = TestStruct{};
+            sch_for_run.run(test).await;
         });
-        let _ = scheduler.add_date_task("123", d1, crate::RepeatingStrategy::Dialy).await;
-        scheduler.run().await;
+        loop 
+        {
+            tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
+            let d1 = Date::now().add_minutes(1);
+            let _ = scheduler.add_date_task("123", d1, crate::RepeatingStrategy::Dialy).await;
+        }
     }
 }
