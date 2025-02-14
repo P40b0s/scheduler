@@ -70,9 +70,9 @@ impl Time
 
 #[derive(Debug)]
 struct Task<T> 
-    where T: PartialEq + Eq + Hash + Send
+    where T: PartialEq + Eq + Hash + Send + Clone
 {
-    id: Arc<T>,
+    id: T,
     ///interval in minutes
     interval: Option<u32>,
     ///target time in format on utilites::Date
@@ -85,9 +85,9 @@ struct Task<T>
 
 ///clone only cloning internal ref Arc<RwLock<Vec<Task>>>
 #[derive(Debug)]
-pub struct Scheduler<T>(Arc<RwLock<Vec<Task<T>>>>) where Self: Send + Sync, T: PartialEq + Eq + Hash + Send;
+pub struct Scheduler<T>(Arc<RwLock<Vec<Task<T>>>>) where Self: Send + Sync, T: PartialEq + Eq + Hash + Send + Clone;
 
-impl<T> Clone for Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
+impl<T> Clone for Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
 {
     fn clone(&self) -> Self 
     {
@@ -117,15 +117,15 @@ impl Display for RepeatingStrategy
     }
 }
 #[derive(Clone, Debug)]
-pub struct Event<T> where Self: Send, T: PartialEq + Eq + Hash + Send
+pub struct Event<T> where Self: Send, T: PartialEq + Eq + Hash + Send + Clone
 {
-    pub id: Arc<T>,
+    pub id: T,
     pub current: u32,
     pub len: u32
 }
-impl<T> Event<T> where T: PartialEq + Eq + Hash + Send + Sync
+impl<T> Event<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
 {
-    fn new(id: Arc<T>, current: u32, len: u32) -> Self
+    fn new(id: T, current: u32, len: u32) -> Self
     {
         Self
         {
@@ -136,20 +136,26 @@ impl<T> Event<T> where T: PartialEq + Eq + Hash + Send + Sync
     }
 }
 
+pub trait SchedulerHandler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
+{
+    fn tick(&self, event: SchedulerEvent<T>) -> impl std::future::Future<Output = ()>;
+}
+
+
 #[derive(Clone, Debug)]
-pub enum SchedulerEvent<T> where T: PartialEq + Eq + Hash + Send + Sync
+pub enum SchedulerEvent<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
 {
     ///time in task is expired and task is not repeatable
-    Expired(Arc<T>),
+    Expired(T),
     ///event every 1 minute
     Tick(Event<T>),
     ///event on finish task, if task is not repeatable
-    Finish(Arc<T>),
+    Finish(T),
     /// event on finish repeat cycle for task, task will rerun with new end time
     FinishCycle(Event<T>)
 }
 
-impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
+impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
 {
     pub fn new() -> Self
     {
@@ -290,9 +296,10 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
             time: None,
             repeating_strategy,
             finished: false,
-            id: Arc::new(id)
+            id
         };
         let mut guard = self.0.write().await;
+        logger::debug!("added task {:?}", &interval);
         guard.push(task);
     }
 
@@ -305,17 +312,13 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync
             time: Some(Time::new(date)),
             repeating_strategy,
             finished: false,
-            id: Arc::new(id)
+            id
         };
         guard.push(task);
     }
 
 }
 
-pub trait SchedulerHandler<T> where T: PartialEq + Eq + Hash + Send + Sync
-{
-    fn tick(&self, event: SchedulerEvent<T>) -> impl std::future::Future<Output = ()>;
-}
 
 fn time_diff(current_date: &Date, checked_date: &Date) -> i64
 {
@@ -325,7 +328,7 @@ fn time_diff(current_date: &Date, checked_date: &Date) -> i64
 #[cfg(test)]
 mod tests
 {
-    use std::{fmt::Debug, hash::Hash};
+    use std::{fmt::Debug, hash::Hash, sync::Arc};
 
     use utilites::Date;
     use crate::SchedulerEvent;
@@ -344,7 +347,7 @@ mod tests
     {
         
     }
-    impl<T> super::SchedulerHandler<T> for TestStruct where T: PartialEq + Eq + Hash + Send + Sync + Debug + ToString
+    impl<T> super::SchedulerHandler<T> for TestStruct where T: PartialEq + Eq + Hash + Send + Sync + Debug + ToString + Clone
     {
         fn tick(&self, event: SchedulerEvent<T>) -> impl std::future::Future<Output = ()>
         {
@@ -370,19 +373,25 @@ mod tests
         let _ = logger::StructLogger::new_default();
         let d1 = Date::now().add_minutes(1);
         let scheduler = super::Scheduler::new();
-        let _ = scheduler.add_date_task("123", d1, crate::RepeatingStrategy::Dialy).await;
+        let _ = scheduler.add_date_task(Arc::new("123"), d1, crate::RepeatingStrategy::Dialy).await;
+        let _ = scheduler.add_interval_task(Arc::new("001"), 1, crate::RepeatingStrategy::Once).await;
         let sch_for_run = scheduler.clone();
         tokio::spawn(async move 
         {
-           
             let test = TestStruct{};
             sch_for_run.run(test).await;
         });
         loop 
         {
             tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
-            let d1 = Date::now().add_minutes(1);
-            let _ = scheduler.add_date_task("123", d1, crate::RepeatingStrategy::Dialy).await;
+            let _ = scheduler.add_interval_task(Arc::new("002"), 1, crate::RepeatingStrategy::Once).await;
         }
+    }
+
+    #[test]
+    fn test_interval_1()
+    {
+        let result = 1%1;
+        println!("{}", result);
     }
 }
