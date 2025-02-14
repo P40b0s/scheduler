@@ -1,0 +1,19 @@
+[14-02-2025 16:27:05]-[scheduler:315]:⚙ DEBUG -> added date task "test_expired_date"
+[14-02-2025 16:27:05]-[scheduler::tests:372]:💬 Информация -> finish_cycle: Event { id: "test_expired_date", current: 0, len: 86400 }
+[14-02-2025 16:27:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 0, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:28:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 665, len: 86400 }
+[14-02-2025 16:28:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 665, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:29:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 725, len: 86400 }
+[14-02-2025 16:29:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 725, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:30:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 785, len: 86400 }
+[14-02-2025 16:30:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 785, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:31:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 845, len: 86400 }
+[14-02-2025 16:31:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 845, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:32:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 905, len: 86400 }
+[14-02-2025 16:32:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 905, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:33:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 965, len: 86400 }
+[14-02-2025 16:33:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 965, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:34:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 1025, len: 86400 }
+[14-02-2025 16:34:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 1025, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]
+[14-02-2025 16:35:05]-[scheduler::tests:368]:💬 Информация -> tick: Event { id: "test_expired_date", current: 1085, len: 86400 }
+[14-02-2025 16:35:05]-[scheduler:272]:⚙ DEBUG -> tasks in pool [Task { id: "test_expired_date", interval: None, time: Some(Time { time: Date(2025-02-15T16:17:00), current_timestramp: 1085, finish_timestramp: 86400, is_expired: false }), repeating_strategy: Dialy, finished: false }]

@@ -286,20 +286,28 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone + Debu
     }
     
 
-    pub async fn add_interval_task(&self, id: T, interval: u32, repeating_strategy: RepeatingStrategy)
+    pub async fn add_interval_task(&self, id: T, interval: u32, repeating_strategy: RepeatingStrategy) -> bool
     {
-        logger::debug!("added interval task {:?}", &id);
-        let task = Task
+        if let RepeatingStrategy::Forever | RepeatingStrategy::Dialy = repeating_strategy
         {
-            interval: Some(interval),
-            time: None,
-            repeating_strategy,
-            finished: false,
-            id
-        };
-        let mut guard = self.0.write().await;
-       
-        guard.push(task);
+            logger::debug!("added interval task {:?}", &id);
+            let task = Task
+            {
+                interval: Some(interval),
+                time: None,
+                repeating_strategy,
+                finished: false,
+                id
+            };
+            let mut guard = self.0.write().await;
+            guard.push(task);
+            return true;
+        }
+        else 
+        {
+            logger::error!("В задаче {:?} стратегия повтора должна быть установлена на `once` `dialy` или `forever`, задача выполнена не будет", &id);    
+            return false;
+        }
     }
 
     pub async fn add_date_task(&self, id: T, date: Date, repeating_strategy: RepeatingStrategy)
@@ -386,6 +394,17 @@ mod tests
             tokio::time::sleep(tokio::time::Duration::from_millis(63000)).await;
             let _ = scheduler.add_interval_task(Arc::new("002"), 1, crate::RepeatingStrategy::Once).await;
         }
+    }
+    #[tokio::test]
+    async fn test_scheduller2()
+    {
+        let _ = logger::StructLogger::new_default();
+        let d1 = Date::now().sub_minutes(10);
+        let scheduler = super::Scheduler::new();
+        let _ = scheduler.add_date_task(Arc::new("test_expired_date"), d1, crate::RepeatingStrategy::Dialy).await;
+        let sch_for_run = scheduler.clone();
+        let test = TestStruct{};
+        sch_for_run.run(test).await;
     }
 
     #[test]
