@@ -169,109 +169,107 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone + Debu
             let mut guard = self.0.write().await;
             for task in guard.iter_mut()
             {
-                if !task.finished
+                match task.repeating_strategy
                 {
-                    match task.repeating_strategy
+                    RepeatingStrategy::Once =>
                     {
-                        RepeatingStrategy::Once =>
+                        if let Some(interval) = task.interval.as_ref()
                         {
-                            if let Some(interval) = task.interval.as_ref()
+                            if minutes != 0
                             {
-                                if minutes != 0
+                                let div = minutes % interval;
+                                if div == 0
                                 {
-                                    let div = minutes % interval;
-                                    if div == 0
-                                    {
-                                        handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
-                                        task.finished = true;
-                                    }
-                                    else
-                                    {
-                                        let event = Event::new(task.id.clone(), div, *interval);
-                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
-                                    }
-                                }
-                            }
-                            else if let Some(time) = task.time.as_mut()
-                            {
-                                time.update();
-                                if minutes == 0 && time.is_expired
-                                {
-                                    handler.tick(SchedulerEvent::Expired(task.id.clone())).await;
+                                    handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
                                     task.finished = true;
                                 }
-                                else if minutes != 0
+                                else
                                 {
-                                    if time.is_expired
-                                    {
-                                        handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
-                                        task.finished = true;
-                                    }
-                                    else
-                                    {
-                                        let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
-                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
-                                    }
+                                    let event = Event::new(task.id.clone(), div, *interval);
+                                    let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                 }
                             }
-                        },
-                        RepeatingStrategy::Dialy | RepeatingStrategy::Forever =>
+                        }
+                        else if let Some(time) = task.time.as_mut()
                         {
-                            if let Some(interval) = task.interval.as_ref()
+                            time.update();
+                            if minutes == 0 && time.is_expired
                             {
-                                if minutes != 0
-                                {
-                                    let div = minutes % interval;
-                                    if div == 0
-                                    {
-                                        let event = Event::new(task.id.clone(), div, *interval);
-                                        let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
-                                    }
-                                    else
-                                    {
-                                        let event = Event::new(task.id.clone(), div, *interval);
-                                        let _ = handler.tick(SchedulerEvent::Tick(event)).await;
-                                    }
-                                }
+                                handler.tick(SchedulerEvent::Expired(task.id.clone())).await;
+                                task.finished = true;
                             }
-                            else if let Some(time) = task.time.as_mut()
+                            else if minutes != 0
                             {
-                                time.update();
                                 if time.is_expired
                                 {
-                                    time.add_hours(24);
-                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
-                                    let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
+                                    handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
+                                    task.finished = true;
                                 }
-                                else if minutes != 0
+                                else
                                 {
                                     let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
                                     let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                 }
                             }
-                        },
-                        RepeatingStrategy::Monthly =>
+                        }
+                    },
+                    RepeatingStrategy::Dialy | RepeatingStrategy::Forever =>
+                    {
+                        if let Some(interval) = task.interval.as_ref()
                         {
-                            if let Some(time) = task.time.as_mut()
+                            if minutes != 0
                             {
-                                time.update();
-                                if time.is_expired
+                                let div = minutes % interval;
+                                if div == 0
                                 {
-                                    time.add_months(1);
-                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let event = Event::new(task.id.clone(), div, *interval);
                                     let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
                                 }
-                                else if minutes != 0
+                                else
                                 {
-                                    let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                    let event = Event::new(task.id.clone(), div, *interval);
                                     let _ = handler.tick(SchedulerEvent::Tick(event)).await;
                                 }
                             }
-                        },
-                    }
+                        }
+                        else if let Some(time) = task.time.as_mut()
+                        {
+                            time.update();
+                            if time.is_expired
+                            {
+                                time.add_hours(24);
+                                let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
+                            }
+                            else if minutes != 0
+                            {
+                                let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                let _ = handler.tick(SchedulerEvent::Tick(event)).await;
+                            }
+                        }
+                    },
+                    RepeatingStrategy::Monthly =>
+                    {
+                        if let Some(time) = task.time.as_mut()
+                        {
+                            time.update();
+                            if time.is_expired
+                            {
+                                time.add_months(1);
+                                let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                let _ = handler.tick(SchedulerEvent::FinishCycle(event)).await;
+                            }
+                            else if minutes != 0
+                            {
+                                let event = Event::new(task.id.clone(), time.current_timestramp as u32, time.finish_timestramp as u32);
+                                let _ = handler.tick(SchedulerEvent::Tick(event)).await;
+                            }
+                        }
+                    },
                 }
             }
             guard.retain(|d| !d.finished);
+            logger::debug!("tasks in pool {:?}", &guard);
             drop(guard);
             tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
             //reset timer, we not need u32 overflow on long running tasks
