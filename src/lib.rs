@@ -155,7 +155,7 @@ pub enum SchedulerEvent<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
     FinishCycle(Event<T>)
 }
 
-impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
+impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone + Debug
 {
     pub fn new() -> Self
     {
@@ -290,6 +290,7 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
 
     pub async fn add_interval_task(&self, id: T, interval: u32, repeating_strategy: RepeatingStrategy)
     {
+        logger::debug!("added interval task {:?}", &id);
         let task = Task
         {
             interval: Some(interval),
@@ -299,12 +300,13 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Hash + Send + Sync + Clone
             id
         };
         let mut guard = self.0.write().await;
-        logger::debug!("added task {:?}", &interval);
+       
         guard.push(task);
     }
 
     pub async fn add_date_task(&self, id: T, date: Date, repeating_strategy: RepeatingStrategy)
     {
+        logger::debug!("added date task {:?}", &id);
         let mut guard = self.0.write().await;
         let task = Task
         {
@@ -383,7 +385,7 @@ mod tests
         });
         loop 
         {
-            tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(63000)).await;
             let _ = scheduler.add_interval_task(Arc::new("002"), 1, crate::RepeatingStrategy::Once).await;
         }
     }
