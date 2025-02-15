@@ -65,7 +65,7 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Send + Sync + Clone + Debug
 
     pub async fn add_interval_task(&self, id: T, interval: u32, repeating_strategy: RepeatingStrategy) -> bool
     {
-        if let RepeatingStrategy::Forever | RepeatingStrategy::Dialy = repeating_strategy
+        if let RepeatingStrategy::Forever | RepeatingStrategy::Dialy | RepeatingStrategy::Once = repeating_strategy
         {
             logger::debug!("added interval task {:?}", &id);
             let task = Task
