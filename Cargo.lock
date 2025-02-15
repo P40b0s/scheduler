@@ -428,7 +428,7 @@ checksum = "6ea1a2d0a644769cc99faa24c3ad26b379b786fe7c36fd3c546254801650e6dd"
 
 [[package]]
 name = "scheduler"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "logger 0.1.2 (git+https://github.com/P40b0s/logger.git)",
  "serde",

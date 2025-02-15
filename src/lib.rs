@@ -179,6 +179,10 @@ where T: PartialEq + Eq + Send + Sync + Clone + Debug
                     handler.tick(SchedulerEvent::Finish(task.id.clone())).await;
                     task.finished = true;
                 }
+                else
+                {
+                    need_tick_msg = true;
+                }
             },
             _ =>
             {
