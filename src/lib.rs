@@ -42,8 +42,6 @@ impl<T> Scheduler<T> where T: PartialEq + Eq + Send + Sync + Clone + Debug
                 {
                     date_worker(task, &mut minutes, &handler).await;
                 }
-                
-                
             }
             guard.retain(|d| !d.finished);
             logger::debug!("tasks in pool {:?}", &guard);
@@ -307,8 +305,8 @@ mod tests
             sch_for_run.run(test).await;
         });
         tokio::time::sleep(tokio::time::Duration::from_millis(63000)).await;
-        let d1 = Date::now().sub_minutes(4000);
-        let _ = scheduler.add_date_task(Arc::new("test_added_expired_date"), d1, crate::RepeatingStrategy::Monthly).await;
+        let d1 = Date::parse("2025-02-15T21:54:24").unwrap();
+        let _ = scheduler.add_date_task(Arc::new("test_added_expired_date"), d1, crate::RepeatingStrategy::Dialy).await;
         loop 
         {
             tokio::time::sleep(tokio::time::Duration::from_millis(63000)).await;
